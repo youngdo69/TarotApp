@@ -62,7 +62,7 @@ const fetchTarotInterpretation = async (cards, question) => {
           },
           {
             "role": "user",
-            "content": `다음은 사용자가 뽑은 타로 카드입니다: ${cardNames}. 이 사람의 질문은: "${question}". 이 카드들의 의미를 종합해서 직관적이고 영적인 타로 해석을 해 주세요. 한국어로 답해주세요.`
+            "content": `다음은 사용자가 뽑은 타로 카드입니다: ${cardNames}. 이 사람의 질문은: "${question}". 이 카드들의 의미를 종합해서 직관적이고 영적인 타로 해석을 해 주세요. 비교나 양자택일의 질문에서는 반드시 하나를 선택해서 한국어로 답해주세요.`
           }
         ],
         temperature: 0.7,
