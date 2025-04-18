@@ -1,7 +1,6 @@
 import React, { useState } from "react";
-import { Card, CardContent } from "./components/ui/card";
-import { Button } from "./components/ui/button";
 import { motion } from "framer-motion";
+import jsPDF from "jspdf";
 import 'bootstrap/dist/css/bootstrap.min.css'
 import { Button as BsButton, Form, InputGroup, Card as BsCard, Container, Row, Col, Badge } from 'react-bootstrap';
 
@@ -39,14 +38,14 @@ const fetchTarotInterpretation = async (cards, question) => {
   try {
     const cardNames = cards.map(c => c.name).join(", ");
     console.log('API 요청 시작:', { cardNames, question });
-    
+
     // API 키 상태 로깅
     console.log('API 키 확인:', {
       exists: !!apiKey,
       length: apiKey?.length,
       prefix: apiKey?.substring(0, 8) + '...'
     });
-    
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -77,7 +76,7 @@ const fetchTarotInterpretation = async (cards, question) => {
         statusText: response.statusText,
         body: errorText
       });
-      
+
       // 오류 내용을 자세히 분석
       let errorDetail = '';
       try {
@@ -86,13 +85,13 @@ const fetchTarotInterpretation = async (cards, question) => {
       } catch {
         errorDetail = errorText;
       }
-      
+
       throw new Error(`API 요청 실패 (${response.status}): ${errorDetail}`);
     }
-    
+
     const data = await response.json();
     console.log('API 응답:', data);
-    
+
     if (data.choices && data.choices[0] && data.choices[0].message) {
       return data.choices[0].message.content;
     } else {
@@ -100,7 +99,7 @@ const fetchTarotInterpretation = async (cards, question) => {
     }
   } catch (error) {
     console.error('Error fetching tarot interpretation:', error);
-    
+
     if (error.message.includes('401')) {
       return "API 키 인증에 실패했습니다. API 키가 올바른지 확인해주세요.";
     } else if (error.message.includes('429')) {
@@ -108,7 +107,7 @@ const fetchTarotInterpretation = async (cards, question) => {
     } else if (error.message.includes('500')) {
       return "OpenAI 서버에 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
     }
-    
+
     return "죄송합니다. 타로 해석을 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\n\n오류: " + error.message;
   }
 };
@@ -116,14 +115,14 @@ const fetchTarotInterpretation = async (cards, question) => {
 const determineCardCount = async (question) => {
   try {
     console.log('카드 수 결정 API 요청 시작:', { question });
-    
+
     // API 키 상태 로깅
     console.log('API 키 확인:', {
       exists: !!apiKey,
       length: apiKey?.length,
       prefix: apiKey?.substring(0, 8) + '...'
     });
-    
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -146,7 +145,7 @@ const determineCardCount = async (question) => {
         max_tokens: 10
       })
     });
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error('API 오류 응답:', {
@@ -157,10 +156,10 @@ const determineCardCount = async (question) => {
       console.error(`API 요청 실패 (${response.status}):`, errorText);
       return 3; // 오류 시 기본값
     }
-    
+
     const data = await response.json();
     console.log('카드 수 결정 응답:', data);
-    
+
     if (data.choices && data.choices[0] && data.choices[0].message) {
       const cardCount = parseInt(data.choices[0].message.content.match(/\d+/)?.[0] || "3");
       return Math.min(Math.max(cardCount, 1), 5);
@@ -214,7 +213,7 @@ export default function MyTarot() {
     tarotDeck.slice(i * cardsPerSpread, (i + 1) * cardsPerSpread)
   );
 
-   const simulateProgress = () => {
+  const simulateProgress = () => {
     let progress = 0;
     const interval = setInterval(() => {
       progress += Math.random() * 15;
@@ -225,6 +224,189 @@ export default function MyTarot() {
       setLoadingProgress(progress);
     }, 600);
     return interval;
+  };
+
+  const downloadResultAsPDF = () => {
+    if (!gptResponse) return;
+
+    // 질문 요약으로 파일명 생성
+    const safeTitle = question
+      .replace(/[^\w가-힣\s]/gi, "")
+      .replace(/\s+/g, "_")
+      .slice(0, 20);
+
+    const filename = `타로해석_${safeTitle || "질문없음"}.pdf`;
+
+    // 한글 지원을 위한 설정
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    // 텍스트 내용을 여러 페이지로 분할 (보다 간단한 방식으로 변경)
+    const splitTextIntoPages = (fullText) => {
+      console.log("원본 텍스트 길이:", fullText.length);
+      
+      // 페이지당 최대 글자 수를 줄여서 더 많은 페이지가 생성되도록 함
+      const MAX_LENGTH_PER_PAGE = 800;
+      const pages = [];
+      
+      let remaining = fullText;
+      while (remaining.length > 0) {
+        let pageText;
+        
+        if (remaining.length <= MAX_LENGTH_PER_PAGE) {
+          // 남은 텍스트가 최대 길이보다 작으면 전체를 사용
+          pageText = remaining;
+          remaining = '';
+        } else {
+          // 최대 길이에서 마지막 줄바꿈 또는 문장 끝을 찾아 자연스럽게 분할
+          let cutIndex = MAX_LENGTH_PER_PAGE;
+          
+          // 줄바꿈이나 문장 끝을 찾아 자르는 위치 조정
+          const lastNewLine = remaining.lastIndexOf('\n', MAX_LENGTH_PER_PAGE);
+          const lastPeriod = remaining.lastIndexOf('. ', MAX_LENGTH_PER_PAGE);
+          const lastComma = remaining.lastIndexOf(', ', MAX_LENGTH_PER_PAGE);
+          
+          if (lastNewLine > MAX_LENGTH_PER_PAGE * 0.7) {
+            cutIndex = lastNewLine + 1;
+          } else if (lastPeriod > MAX_LENGTH_PER_PAGE * 0.7) {
+            cutIndex = lastPeriod + 2;
+          } else if (lastComma > MAX_LENGTH_PER_PAGE * 0.7) {
+            cutIndex = lastComma + 2;
+          }
+          
+          pageText = remaining.substring(0, cutIndex);
+          remaining = remaining.substring(cutIndex);
+        }
+        
+        pages.push(pageText);
+        console.log(`페이지 ${pages.length} 생성, 길이: ${pageText.length}`);
+      }
+      
+      console.log("분할된 페이지 수:", pages.length);
+      return pages;
+    };
+    
+    // 각 페이지를 이미지로 변환하여 PDF에 추가
+    const renderPage = (text, isFirstPage) => {
+      // 캔버스 생성 및 크기 설정
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = 595;  // A4 가로 픽셀 (72 DPI)
+      canvas.height = 842; // A4 세로 픽셀 (72 DPI)
+      
+      // 배경 설정
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // 텍스트 스타일 설정
+      ctx.fillStyle = 'black';
+      let startY = 40; // 시작 Y 위치
+      
+      // 첫 페이지인 경우 제목과 질문 추가
+      if (isFirstPage) {
+        // 제목 스타일
+        ctx.font = 'bold 24px "맑은 고딕", sans-serif';
+        ctx.fillText('🔮 타로 해석 결과', 40, startY);
+        startY += 40;
+        
+        // 질문 스타일
+        ctx.font = '16px "맑은 고딕", sans-serif';
+        ctx.fillText(`질문: ${question}`, 40, startY);
+        startY += 40;
+      } else {
+        // 페이지 번호 표시
+        ctx.font = '12px "맑은 고딕", sans-serif';
+        ctx.fillText('계속...', canvas.width - 80, 20);
+      }
+      
+      // 본문 스타일
+      ctx.font = '16px "맑은 고딕", sans-serif';
+      
+      // 텍스트 렌더링
+      const renderText = (text, x, y, maxWidth, lineHeight) => {
+        let currentY = y;
+        
+        // 텍스트를 줄바꿈 단위로 분리
+        const lines = text.split('\n');
+        
+        // 각 줄 처리
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          
+          if (line.trim() === '') {
+            currentY += lineHeight;
+            continue;
+          }
+          
+          // 한 줄에 들어갈 수 있는 문자 수 계산
+          let currentLine = '';
+          for (let j = 0; j < line.length; j++) {
+            const char = line[j];
+            const testLine = currentLine + char;
+            const metrics = ctx.measureText(testLine);
+            
+            if (metrics.width > maxWidth) {
+              ctx.fillText(currentLine, x, currentY);
+              currentY += lineHeight;
+              currentLine = char;
+            } else {
+              currentLine = testLine;
+            }
+          }
+          
+          // 마지막 줄 그리기
+          if (currentLine.trim() !== '') {
+            ctx.fillText(currentLine, x, currentY);
+            currentY += lineHeight;
+          }
+          
+          // 줄 간격 추가
+          currentY += lineHeight * 0.2;
+        }
+        
+        return currentY;
+      };
+      
+      // 텍스트 렌더링
+      renderText(text, 40, startY, canvas.width - 80, 24);
+      
+      return canvas.toDataURL('image/jpeg', 1.0);
+    };
+    
+    // 텍스트를 페이지로 분할 (길이가 짧은 경우 강제로 두 페이지로 분할)
+    let textPages = splitTextIntoPages(gptResponse);
+    
+    // 너무 적은 페이지 수를 방지 (테스트용)
+    if (textPages.length === 1 && gptResponse.length > 300) {
+      const halfLength = Math.floor(gptResponse.length / 2);
+      textPages = [
+        gptResponse.substring(0, halfLength),
+        gptResponse.substring(halfLength)
+      ];
+      console.log("강제로 두 페이지로 분할:", textPages.length);
+    }
+    
+    // 각 페이지를 PDF에 추가
+    for (let i = 0; i < textPages.length; i++) {
+      if (i > 0) {
+        doc.addPage();
+        console.log(`PDF에 페이지 ${i+1} 추가`);
+      }
+      
+      const isFirstPage = (i === 0);
+      const imgData = renderPage(textPages[i], isFirstPage);
+      
+      // PDF에 이미지 추가 (A4 페이지 크기에 맞게)
+      doc.addImage(imgData, 'JPEG', 0, 0, 210, 297); // A4 사이즈 (210x297mm)
+    }
+    
+    // PDF 저장
+    doc.save(filename);
+
+    alert(`📄 타로 해석 결과 PDF가 저장되었습니다! (총 ${textPages.length}페이지)\n\n파일 앱 또는 다운로드 폴더에서 확인해 보세요.`);
   };
 
   if (!started) {
@@ -242,12 +424,12 @@ export default function MyTarot() {
             >
               <source src="/videos/tarot-intro.mp4" type="video/mp4" />
               Your browser does not support the video tag.
-            </video>    
+            </video>
           </div>
-          
+
           <div className="d-flex justify-content-center align-items-center">
             <span className="display-5 me-4">🔮</span>
-            <BsButton 
+            <BsButton
               variant="primary"
               size="lg"
               className="py-3 px-5 shadow-lg btn-glow"
@@ -297,7 +479,7 @@ export default function MyTarot() {
               </BsButton>
             </InputGroup>
             {listening && <p className="text-muted mb-4">듣는 중...</p>}
-            
+
             {isQuestionLoading ? (
               <div className="text-center mb-4">
                 <div className="d-flex justify-content-center mb-3">
@@ -335,7 +517,7 @@ export default function MyTarot() {
                 `}</style>
               </div>
             ) : (
-              <BsButton 
+              <BsButton
                 variant="primary"
                 size="lg"
                 className="py-3 px-5 w-50 shadow-lg"
@@ -374,12 +556,12 @@ export default function MyTarot() {
         <h2 className="display-5 font-weight-bold mb-5">✨ 당신이 선택한 카드 ✨</h2>
         <div className="d-flex justify-content-center mb-5" style={{ marginTop: "110px", minHeight: "250px" }}>
           {selectedCards.map((card, index) => (
-            <div 
-              key={card.id} 
+            <div
+              key={card.id}
               className="mx-n3 transform-gpu"
-              style={{ 
+              style={{
                 zIndex: selectedCards.length - index,
-                transform: `scale(1.2) rotate(${(index-1) * 5}deg)`,
+                transform: `scale(1.2) rotate(${(index - 1) * 5}deg)`,
                 transformOrigin: 'bottom center',
                 transition: 'all 0.3s ease'
               }}
@@ -391,7 +573,7 @@ export default function MyTarot() {
                 src={card.frontImage}
                 alt={card.name}
                 className="img-fluid rounded shadow-lg"
-                style={{ 
+                style={{
                   maxWidth: '150px',
                   boxShadow: '0 10px 25px rgba(0,0,0,0.2)'
                 }}
@@ -408,19 +590,19 @@ export default function MyTarot() {
               </div>
             </div>
             <div className="progress mb-2" style={{ height: "10px", width: "300px", margin: "0 auto" }}>
-              <div 
-                className="progress-bar progress-bar-striped progress-bar-animated bg-success" 
-                role="progressbar" 
+              <div
+                className="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                role="progressbar"
                 style={{ width: `${loadingProgress}%` }}
-                aria-valuenow={loadingProgress} 
-                aria-valuemin="0" 
+                aria-valuenow={loadingProgress}
+                aria-valuemin="0"
                 aria-valuemax="100"
               ></div>
             </div>
             <p className="text-muted">타로 카드를 해석하는 중입니다...</p>
           </div>
         ) : (
-          <BsButton 
+          <BsButton
             variant="success"
             size="lg"
             className="py-3 px-5 shadow-lg"
@@ -461,38 +643,49 @@ export default function MyTarot() {
             </BsCard.Text>
           </BsCard.Body>
         </BsCard>
-        <BsButton 
-          variant="warning"
-          size="lg"
-          className="py-3 px-5 shadow-lg"
-          style={{
-            background: 'linear-gradient(135deg, #F59E0B, #F43F5E)',
-            border: 'none',
-            boxShadow: '0 0 20px rgba(245,158,11,0.4)'
-          }}
-          onClick={() => {
-            setSelectedCards([]);
-            setShowResult(false);
-            setQuestion("");
-            setQuestionSubmitted(false);
-            setGptResponse("");
-          }}
-        >
-          질문하기
-        </BsButton>
-      </Container>
+        <div className="d-flex justify-content-center mt-4">
+          <BsButton
+            variant="warning"
+            size="lg"
+            className="py-3 px-5 shadow-lg me-4"
+            style={{
+              background: 'linear-gradient(135deg, #F59E0B, #F43F5E)',
+              border: 'none',
+              boxShadow: '0 0 20px rgba(245,158,11,0.4)'
+            }}
+            onClick={() => {
+              setSelectedCards([]);
+              setShowResult(false);
+              setQuestion("");
+              setQuestionSubmitted(false);
+              setGptResponse("");
+            }}
+          >
+            질문하기
+          </BsButton>
+
+          <BsButton
+            variant="secondary"
+            size="lg"
+            className="py-3 px-5 shadow-lg ms-4"
+            onClick={downloadResultAsPDF}
+          >
+            PDF 저장
+          </BsButton>
+        </div>
+      </Container >
     );
   }
 
   return (
     <Container fluid className="py-4 position-relative min-vh-100 d-flex flex-column">
-      <div className="text-center mb-5 w-100" style={{maxWidth: '1200px', margin: '0 auto'}}>
+      <div className="text-center mb-5 w-100" style={{ maxWidth: '1200px', margin: '0 auto' }}>
         <h2 className="display-5 font-weight-bold mb-2">🃏 {maxSelectable}장의 카드를 뽑으세요!</h2>
         <p className="text-muted mb-5">아래 카드 중에서 직관적으로 끌리는 카드를 선택하세요</p>
       </div>
 
-      <div className="flex-grow-1 d-flex flex-column align-items-center justify-content-start" style={{marginTop: "60px"}}>
-        <div className="w-100 d-flex flex-column align-items-center" style={{maxWidth: '1200px', margin: '0 auto'}}>
+      <div className="flex-grow-1 d-flex flex-column align-items-center justify-content-start" style={{ marginTop: "60px" }}>
+        <div className="w-100 d-flex flex-column align-items-center" style={{ maxWidth: '1200px', margin: '0 auto' }}>
           {spreadChunks.map((chunk, index) => (
             <div key={index} className="position-relative w-100 d-flex justify-content-center mb-4" style={{ height: '160px', overflow: 'visible', marginTop: index === 0 ? '0' : '0' }}>
               <div className="position-absolute d-flex align-items-center" style={{ left: '50%', transform: 'translateX(-50%)' }}>
@@ -524,9 +717,9 @@ export default function MyTarot() {
                           stiffness: 100
                         }
                       }}
-                      whileHover={{ 
-                        y: -15, 
-                        transition: { duration: 0.2 } 
+                      whileHover={{
+                        y: -15,
+                        transition: { duration: 0.2 }
                       }}
                       onClick={() => toggleCard(card)}
                     >
@@ -572,11 +765,11 @@ export default function MyTarot() {
 
       {selectedCards.length > 0 && (
         <div className="position-fixed bottom-0 start-0 end-0 d-flex justify-content-center mb-4">
-          <Badge 
-            pill 
-            bg="light" 
-            className="px-4 py-2 shadow" 
-            style={{backdropFilter: 'blur(8px)', backgroundColor: 'rgba(255,255,255,0.8)'}}
+          <Badge
+            pill
+            bg="light"
+            className="px-4 py-2 shadow"
+            style={{ backdropFilter: 'blur(8px)', backgroundColor: 'rgba(255,255,255,0.8)' }}
           >
             <span className="fw-bold text-dark">{selectedCards.length}/{maxSelectable} 카드 선택됨</span>
           </Badge>
