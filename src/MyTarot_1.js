@@ -422,7 +422,7 @@ export default function MyTarot() {
               className="w-100 h-100 object-cover"
               style={{ boxShadow: "0 0 30px rgba(147,51,234,0.5)", border: "none" }}
             >
-              <source src="/videos/tarot-intro.mp4" type="video/mp4" />
+              <source src="/videos/winged_angel.mp4" type="video/mp4" />
               Your browser does not support the video tag.
             </video>
           </div>
